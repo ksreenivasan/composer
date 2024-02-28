@@ -351,7 +351,7 @@ class InContextLearningQAAccuracy(InContextLearningMetric):
                 cleaned_final_answer = self.normalize_answer(final_answer)
                 cleaned_sample_labels = {self.normalize_answer(label) for label in sample_labels}
             else:
-                cleaned_final_answer = final_answer
+                cleaned_final_answer = final_answer.strip()
                 cleaned_sample_labels = set(sample_labels)
 
             metric_result_dict['original_label'].append(sample_labels)
