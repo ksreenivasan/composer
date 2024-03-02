@@ -11,8 +11,7 @@ import torch
 
 from composer.core import Callback, State
 from composer.loggers import ConsoleLogger, Logger
-
-# from torch.utils.data import DataLoader, Dataset
+from composer.utils.dist import all_gather_object
 
 
 class EvalOutputLogging(Callback):
@@ -24,23 +23,25 @@ class EvalOutputLogging(Callback):
     any keys from the batch pased into `batch_keys_to_log`. It will do so after every eval batch.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, log_tokens=False, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
-        self.warn_batch_is_not_dict = True
+        self.log_tokens = log_tokens
+        self.columns = None
+        self.name = None
+        self.rows = []
 
     def eval_batch_end(self, state: State, logger: Logger) -> None:
         if not isinstance(state.batch, Dict):
-            if self.warn_batch_is_not_dict:
-                warnings.warn(f'''EvalOutputLogging only supports batchs that are dictionary. \
-                    Found batch for type {type(state.batch)}. \
-                    Not logging eval outputs.''')
-                self.warn_batch_is_not_dict = False
+            warnings.warn(f'''EvalOutputLogging only supports batches that are dictionary. \
+                Found batch for type {type(state.batch)}. \
+                Not logging eval outputs.''')
             return
 
         assert state.outputs is not None
         assert state.metric_outputs is not None
         logging_dict: Dict[str, Union[List[Any], torch.Tensor, Sequence[torch.Tensor]]] = deepcopy(state.metric_outputs)
 
+        # If batch mode is not generate, outputs will be logits
         if state.batch['mode'] == 'generate':
             # Outputs are already detokenized
             logging_dict['outputs'] = state.outputs
@@ -48,6 +49,7 @@ class EvalOutputLogging(Callback):
         input_ids = state.batch['input_ids']
         logged_input = []
         assert state.dataloader is not None
+
         # Depad and decode input_ids
         for input_list in input_ids.tolist():
             depadded_input = [
@@ -58,24 +60,61 @@ class EvalOutputLogging(Callback):
                 state.dataloader.dataset.tokenizer.decode(depadded_input))  # pyright: ignore[reportGeneralTypeIssues]
         logging_dict['input'] = logged_input
 
-        # Get column names
-        columns = list(logging_dict.keys())
-        # Convert logging_dict from kv pairs of column name and column values to a list of rows
-        rows = [list(item) for item in zip(*logging_dict.values())]
+        # Log token indices if toggled
+        if self.log_tokens:
+            logging_dict['input_tokens'] = input_ids.tolist()
+            if not state.batch['mode'] == 'generate':
+                if isinstance(state.outputs, torch.Tensor):  # pyright
+                    logging_dict['label_tokens'] = state.outputs.tolist()
+
+        # Add run_name as a column
+        run_name_list = [state.run_name for _ in range(0, len(logging_dict['input']))]
+        logging_dict['run_name'] = run_name_list
 
         # NOTE: This assumes _any_ tensor logged are tokens to be decoded.
         #       This might not be true if, for example, logits are logged.
-        # detokenize data in rows
-        rows = [
-            [
-                state.dataloader.dataset.tokenizer.decode(x)  # pyright: ignore[reportGeneralTypeIssues]
-                if isinstance(x, torch.Tensor) else x for x in row
-            ] for row in rows
-        ]
+
+        # Detokenize data in rows
+        for key, value in logging_dict.items():
+            # All types in list are the same
+            if isinstance(value[0], torch.Tensor):
+                logging_dict[key] = [
+                    state.dataloader.dataset.tokenizer.decode(t)  # pyright: ignore[reportGeneralTypeIssues]
+                    for t in value
+                ]
+            elif isinstance(value[0], list):
+                if isinstance(value[0][0], torch.Tensor):
+                    logging_dict[key] = [
+                        [
+                            state.dataloader.dataset.tokenizer.decode(  # pyright: ignore[reportGeneralTypeIssues]
+                                choice) for choice in t
+                        ] for t in value
+                    ]
+
+        # Convert logging_dict from kv pairs of column name and column values to a list of rows
+        # Example:
+        # logging_dict = {"a": ["1a", "2a"], "b": ["1b", "2b"]}
+        # will become
+        # columns = {"a", "b"}, rows = [["1a", "1b"], ["2a", "2b"]]
+        columns = list(logging_dict.keys())
+        rows = [list(item) for item in zip(*logging_dict.values())]
 
         assert state.dataloader_label is not None
-        step = state.timestamp.batch.value
-        name = f'{state.dataloader_label}_step_{step}'
+        if not self.name:
+            # If only running eval, step will be 0
+            # If running training, step will be current training step
+            step = state.timestamp.batch.value
+            self.name = f'{state.dataloader_label}_step_{step}'
+            self.columns = columns
+        self.rows.extend(rows)
+
+    def eval_end(self, state: State, logger: Logger) -> None:
+        list_of_rows = all_gather_object(self.rows)
+        rows = [row for rows in list_of_rows for row in rows]
         for dest_logger in logger.destinations:
             if not isinstance(dest_logger, ConsoleLogger):
-                dest_logger.log_table(columns, rows, name=name, step=state.timestamp.batch.value)
+                dest_logger.log_table(self.columns, rows, name=self.name, step=state.timestamp.batch.value)
+
+        self.rows = []
+        self.name = None
+        self.columns = None

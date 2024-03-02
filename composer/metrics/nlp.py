@@ -204,6 +204,12 @@ class InContextLearningMetric(Metric):
         self.needs_batch = True
 
     def _wrap_update(self, update: Callable) -> Callable:
+        """Overwrite default _wrap_update to return result of update().
+
+        Torch metrics wraps update with following wrapped_func but explicitly does not return the value.
+        In general, torchmetrics update() does not return a value, but we want to in order to pass it on
+        to state.metric_outputs.
+        """
 
         @functools.wraps(update)
         def wrapped_func(*args: Any, **kwargs: Any) -> None:
@@ -351,8 +357,9 @@ class InContextLearningQAAccuracy(InContextLearningMetric):
                 cleaned_final_answer = self.normalize_answer(final_answer)
                 cleaned_sample_labels = {self.normalize_answer(label) for label in sample_labels}
             else:
+                # even if normalization is off, we should still strip leading/trailing whitespaces
                 cleaned_final_answer = final_answer.strip()
-                cleaned_sample_labels = set(sample_labels)
+                cleaned_sample_labels = {sample_label.strip() for sample_label in sample_labels}
 
             metric_result_dict['original_label'].append(sample_labels)
             metric_result_dict['cleaned_output'].append(cleaned_final_answer)
@@ -465,7 +472,15 @@ class InContextLearningMultipleChoiceAccuracy(InContextLearningMetric):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
         self.add_state('correct', default=torch.tensor(0.0), dist_reduce_fx='sum')
         self.add_state('total', default=torch.tensor(0.0), dist_reduce_fx='sum')
-        self.metric_result_dict = {'context': [], 'correct_choice': [], 'selected_choice': [], 'result': []}
+        self.metric_result_dict = {
+            'context': [],
+            'correct_choice': [],
+            'correct_choice_idx': [],
+            'selected_choice': [],
+            'selected_choice_idx': [],
+            'all_choices': [],
+            'result': []
+        }
 
     def update(self,
                batch: dict,
@@ -499,16 +514,26 @@ class InContextLearningMultipleChoiceAccuracy(InContextLearningMetric):
 
             question = batch['input_ids'][start][:batch['continuation_indices'][start][0]]
 
-            # TODO: Seems broken for schema tasks
             correct_choice = batch['input_ids'][start:end][gold_idx][batch['continuation_indices'][start:end][gold_idx][
                 0]:batch['continuation_indices'][start:end][gold_idx][-1] + 1]
             selected_choice = batch['input_ids'][start:end][idx_min][batch['continuation_indices'][start:end][idx_min][
                 0]:batch['continuation_indices'][start:end][idx_min][-1] + 1]
             metric_result_dict['context'].append(question)
             metric_result_dict['correct_choice'].append(correct_choice)
+            metric_result_dict['correct_choice_idx'].append(gold_idx)
             metric_result_dict['selected_choice'].append(selected_choice)
+            metric_result_dict['selected_choice_idx'].append(idx_min)
+            all_choices = batch['input_ids'][start:end]
+            # Unpads the choices. Necessary in case different choices have different token lengths.
+            if 'attention_mask' in batch:
+                all_choices_list = [choice[batch['attention_mask'][i]] for i, choice in enumerate(all_choices)]
+                metric_result_dict['all_choices'].append(all_choices_list)
 
             self.total += torch.tensor(1.0)
+
+        # Don't return all_choices if we didn't fill it up (i.e. didn't use causal lms)
+        if metric_result_dict['all_choices'] == []:
+            metric_result_dict.pop('all_choices')
 
         return metric_result_dict
 
