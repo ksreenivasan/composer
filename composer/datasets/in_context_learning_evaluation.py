@@ -728,8 +728,10 @@ class InContextLearningQATaskDataset(InContextLearningDataset):
             'input_ids': self.context_key,
             'labels': 'aliases',
         }
+        print(f"Kartik: logging Generation Kwargs before:\n\n {self.base_batch['generation_kwargs']}")
         if 'generation_kwargs' in kwargs:
             self.update_generation_kwargs(kwargs['generation_kwargs'])
+        print(f"Kartik: logging Generation Kwargs after:\n\n {self.base_batch['generation_kwargs']}")
 
     def read_dataset(
         self,
@@ -749,7 +751,7 @@ class InContextLearningQATaskDataset(InContextLearningDataset):
             })
         self.max_answer_length = self._get_max_answer_length(dataset)
         # NOTE: This is the only time we use the class variable padding_size.
-        self.padding_size = self.max_seq_len - self.max_answer_length
+        self.padding_size = self.max_seq_len - self.base_batch['generation_kwargs']['max_new_tokens']
         return dataset
 
     def get_answer_from_example(self, example: Dict, in_context=False) -> str:
