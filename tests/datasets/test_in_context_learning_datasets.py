@@ -1473,7 +1473,7 @@ def test_code_eval_split_batch(dataset_uri, tmp_path):
     assert isinstance(dl, DataSpec)  # pyright
     batches = list(dl.dataloader)
 
-    for k in ('input_ids', 'attention_mask'):
+    for k  in ('input_ids', 'attention_mask'):
         assert [b[k].shape[0] for b in batches] == [5, 5, 2]
 
     list_keys = {
@@ -1499,6 +1499,13 @@ def test_code_eval_split_batch(dataset_uri, tmp_path):
         for field, type_ in static_keys.items():
             assert isinstance(batch[field], type_)
 
+    static_keys = {
+        'pass_at_k': (int, list),
+        'generation_kwargs': dict
+    }
+    for batch in batches:
+        for field, type_ in static_keys.items():
+            assert isinstance(batch[field], type_)
 
 @pytest.mark.parametrize('dataset_uri', ['human_eval_small.jsonl'])
 @pytest.mark.parametrize('num_fewshot', [0, 2])
@@ -1532,8 +1539,6 @@ def test_code_eval_sentpiece_dataloader(dataset_uri, tmp_path, num_fewshot, prom
 
     assert isinstance(dl.dataloader, DataLoader)  # pyright
     batches = list(dl.dataloader)
-    dataset_size = len(open(dataset_uri, 'r').read().strip().split('\n'))
-    dataset_size *= generations_per_sample
 
     max_prompt_length = 0
 
@@ -1542,7 +1547,7 @@ def test_code_eval_sentpiece_dataloader(dataset_uri, tmp_path, num_fewshot, prom
         if isinstance(dl.dataloader.dataset, InContextLearningCodeEvalDataset):
             max_prompt_length = dl.dataloader.dataset.max_prompt_length
         N = len(batches)
-        bs = batch_size if i < N - 1 else dataset_size - (N - 1) * batch_size
+        bs = batch_size if i < N - 1 else len(dl.dataloader.dataset) - (N-1) * batch_size
         assert tuple(batch['input_ids'].shape) == (bs, max_prompt_length)
         assert tuple(batch['attention_mask'].shape) == (bs, max_prompt_length)
         assert batch['mode'] == 'generate'
@@ -1701,7 +1706,7 @@ def test_code_eval_task_dataloader(dataset_uri, tmp_path, num_fewshot, prompt_st
         if isinstance(dl.dataloader.dataset, InContextLearningCodeEvalDataset):
             max_prompt_length = dl.dataloader.dataset.max_prompt_length
         N = len(batches)
-        bs = batch_size if i < N - 1 else dataset_size - (N - 1) * batch_size
+        bs = batch_size if i < N - 1 else len(dl.dataloader.dataset) - (N-1) * batch_size
         assert tuple(batch['input_ids'].shape) == (bs, max_prompt_length)
         assert tuple(batch['attention_mask'].shape) == (bs, max_prompt_length)
         assert batch['mode'] == 'generate'

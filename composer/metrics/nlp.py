@@ -20,6 +20,7 @@ from torchmetrics import Metric
 
 from composer.utils import dist
 from composer.utils.eval_client import EvalClient, LambdaEvalClient, LocalEvalClient, MosaicMLLambdaEvalClient
+from composer.utils import dist
 
 log = logging.getLogger(__name__)
 
@@ -748,7 +749,7 @@ class InContextLearningCodeEvalAccuracy(InContextLearningMetric):
             return 1.0
         return 1.0 - float(np.prod(1.0 - k / np.arange(n - c + 1, n + 1)))
 
-    def _initialize_state(self, batch: Dict[str, Any]):
+    def _initialize_state(self, batch: dict[str, Any]):
         device = batch['input_ids'].device
         self.dataset_size = batch['dataset_size']
         self.pass_at_k = batch['pass_at_k']
@@ -843,11 +844,10 @@ class InContextLearningCodeEvalAccuracy(InContextLearningMetric):
         n = self.num_generations
 
         for k in self.pass_at_k:
-            pass_at_k = sum([self.estimator(n, int(c.item()), k) for c in self.correct[complete]
-                            ]) / complete.sum().item()
+            pass_at_k = sum([self.estimator(n, c.item(), k) for c in self.correct]) / self.dataset_size
             results[f'pass@{k}'] = torch.tensor(pass_at_k)
 
-        if len(results) == 1:  # backwards compatibility
+        if len(results) == 1: # backwards compatibility
             return list(results.values())[0]
 
         return results

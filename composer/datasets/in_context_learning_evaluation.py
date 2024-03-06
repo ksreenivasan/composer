@@ -692,7 +692,6 @@ class InContextLearningQATaskDataset(InContextLearningDataset):
         static_keys = [
             'mode',
             'cot_delimiter',
-            'generation_length',
             'generation_kwargs',
             'do_normalization',
             'stopping_criteria',
@@ -722,6 +721,7 @@ class InContextLearningQATaskDataset(InContextLearningDataset):
                 'pad_token_id': self.pad_tok_id,
                 'use_cache': True,
                 'eos_token_id': self.tokenizer.eos_token_id,
+                'max_new_tokens': self.max_answer_length,
             },
         }
         self.batch_mapping = {
@@ -1306,7 +1306,6 @@ class InContextLearningCodeEvalDataset(InContextLearningDataset):
         static_keys = [
             'mode',
             'pass_at_k',
-            'generation_length',
             'generation_kwargs',
             'generations_per_sample',
             'dataset_size',
@@ -1369,17 +1368,14 @@ class InContextLearningCodeEvalDataset(InContextLearningDataset):
 
     def repeat_dataset(self, dataset: HFDataset, repetitions: int) -> HFDataset:
 
-        def _repeat_dataset():
+        def repeated_dataset():
             for i, sample in enumerate(dataset):
                 for _ in range(repetitions):
-                    assert isinstance(sample, dict)
                     yield {'sample_id': i, **sample}
 
-        from datasets import Dataset as HFDataset  # pyright: ignore[reportGeneralTypeIssues]
+        from datasets import Dataset as HFDataset
 
-        repeated_dataset = HFDataset.from_generator(_repeat_dataset)
-        assert isinstance(repeated_dataset, HFDataset)
-        return repeated_dataset
+        return HFDataset.from_generator(repeated_dataset)
 
     def _set_max_prompt_and_answer_lengths(self):
         """
