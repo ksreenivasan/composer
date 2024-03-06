@@ -13,6 +13,8 @@ from composer.core import Callback, State
 from composer.loggers import ConsoleLogger, Logger
 from composer.utils.dist import all_gather_object
 
+from transformers import AutoTokenizer
+
 
 class EvalOutputLogging(Callback):
     """Logs eval outputs for each sample of each ICL evaluation dataset.
@@ -111,6 +113,20 @@ class EvalOutputLogging(Callback):
     def eval_end(self, state: State, logger: Logger) -> None:
         list_of_rows = all_gather_object(self.rows)
         rows = [row for rows in list_of_rows for row in rows]
+
+        # add generation length to logs
+        tokenizer = AutoTokenizer.from_pretrained("rajammanabrolu/gpt-4-chat", trust_remote_code=True)
+        print("Warning! Using rajammanabrolu/gpt-4-chat tokenizer to get generation length.")
+        outputs_idx = self.columns.index("outputs")
+        for row in rows:
+            try:
+                generation_length = len(tokenizer.encode(row[outputs_idx]))
+            except:
+                print(f"Failed to get generation length for row: {row}")
+                generation_length = -1
+            row.append(generation_length)
+        self.columns.append("generation_length")
+
         for dest_logger in logger.destinations:
             if not isinstance(dest_logger, ConsoleLogger):
                 dest_logger.log_table(self.columns, rows, name=self.name, step=state.timestamp.batch.value)
