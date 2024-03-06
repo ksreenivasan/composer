@@ -1135,7 +1135,7 @@ class InContextLearningSchemaTaskDataset(InContextLearningMultipleChoiceTaskData
         context = context_options[gold_idx]
         if len(preceding_text) > 0:
             context = f'{self.example_delimiter}{context}'
-        context = f'{context}{self.continuation_delimiter}{continuation}'
+        context = f'{self.prelimiter}{context}{self.continuation_delimiter}{continuation}'
         return context
 
     def _construct_multiple_contexts(self, example: Dict, preceding_text: str = '') -> List[str]:
@@ -1156,7 +1156,9 @@ class InContextLearningSchemaTaskDataset(InContextLearningMultipleChoiceTaskData
                 cont_del = self.continuation_delimiter.rstrip()
             else:
                 cont_del = self.continuation_delimiter
-            context_options = [f'{self.example_delimiter}{c}{cont_del}' for c in context_options]
+            context_options = [f'{self.prelimiter}{self.example_delimiter}{c}{cont_del}' for c in context_options]
+        else:
+            context_options = [f'{self.prelimiter}{c}' for c in context_options]
         return context_options
 
     def _prep_example(
@@ -1481,6 +1483,7 @@ def build_icl_dataloader(
             example_delimiter=example_delimiter,
             continuation_delimiter=continuation_delimiter,
             destination_path=destination_path,
+            prelimiter=prelimiter,
             fewshot_random_seed=fewshot_random_seed,
             hf_loading_vars=hf_loading_vars,
             hf_parsing_map=hf_parsing_map,
@@ -1499,6 +1502,7 @@ def build_icl_dataloader(
             example_delimiter=example_delimiter,
             continuation_delimiter=continuation_delimiter,
             destination_path=destination_path,
+            prelimiter=prelimiter,
             fewshot_random_seed=fewshot_random_seed,
             hf_loading_vars=hf_loading_vars,
             hf_parsing_map=hf_parsing_map,
@@ -1517,6 +1521,7 @@ def build_icl_dataloader(
             example_delimiter=example_delimiter,
             continuation_delimiter=continuation_delimiter,
             destination_path=destination_path,
+            prelimiter=prelimiter,
             fewshot_random_seed=fewshot_random_seed,
             hf_loading_vars=hf_loading_vars,
             hf_parsing_map=hf_parsing_map,

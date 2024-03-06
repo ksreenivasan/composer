@@ -25,6 +25,7 @@ from composer.utils import dist
 log = logging.getLogger(__name__)
 
 __all__ = [
+    'InContextLearningMetric',
     'InContextLearningLMAccuracy',
     'InContextLearningMultipleChoiceAccuracy',
     'InContextLearningQAAccuracy',
@@ -199,6 +200,7 @@ class LanguagePerplexity(LanguageCrossEntropy):
 
 
 class InContextLearningMetric(Metric):
+    """Base class for In-context learning (ICL) metrics."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
