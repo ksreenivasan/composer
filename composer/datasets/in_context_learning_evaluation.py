@@ -751,7 +751,10 @@ class InContextLearningQATaskDataset(InContextLearningDataset):
             })
         self.max_answer_length = self._get_max_answer_length(dataset)
         # NOTE: This is the only time we use the class variable padding_size.
-        self.padding_size = self.max_seq_len - self.base_batch['generation_kwargs']['max_new_tokens']
+        if 'generation_kwargs' in self.base_batch.keys():
+            self.padding_size = self.max_seq_len - self.base_batch['generation_kwargs']['max_new_tokens']
+        else:
+            self.padding_size = self.max_seq_len - self.max_answer_length
         return dataset
 
     def get_answer_from_example(self, example: Dict, in_context=False) -> str:
